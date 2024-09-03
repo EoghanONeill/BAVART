@@ -2,9 +2,9 @@ Package: BAVART
 Title: What the Package Does (One Line, Title Case)
 Version: 0.0.0.9000
 Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
-Description: What the package does (one paragraph).
+    person("Eoghan", "O'Neill", , "oneill.eoghan.1@gmail.com", role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0002-1274-4248"))
+Description: Bayesian Additive Vector Autoregression Trees
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -14,3 +14,14 @@ Depends:
 LazyData: true
 URL: https://github.com/EoghanONeill/BAVART
 BugReports: https://github.com/EoghanONeill/BAVART/issues
+LinkingTo: 
+    Rcpp,
+    RcppArmadillo
+Imports: 
+    Rcpp,
+    collapse,
+    dbarts,
+    MASS,
+    stochvol,
+    mfbvar,
+    abind
