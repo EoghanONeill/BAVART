@@ -51,9 +51,13 @@
 #' ts.plot(GDPC1_post)
 #' @export
 mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.thrsh=10,max.count.var=10,
-                     cgm.level=0.95,cgm.exp=2,sd.mu=2,num.trees=250,prior.sig,
+                     cgm.level=0.95,cgm.exp=2,sd.mu=2,num.trees=250,#prior.sig,
                      nburn=1000,nsave=1000,thinfac=1,
-                     quiet=FALSE){
+                     quiet=FALSE,
+                     sparse = FALSE,
+                     alpha_a_y = 0.5,
+                     alpha_b_y = 1,
+                     alpha_split_prior = TRUE){
 
 
   # construct design matrices
@@ -72,7 +76,7 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
   thin.set <- floor(seq(nburn+1,ntot,length.out=nsave))
   in.thin <- 0
 
-  # -----------------------------------------------------------------------------
+  # selection and frequencies -----------------------------------------------------------------------------
   # selection and frequencies
   M_h <- sum(Y_fq=="h")
   M_l <- sum(Y_fq=="l")
@@ -126,7 +130,7 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
     }
   }
 
-  # -----------------------------------------------------------------------------
+  # initialize draws -----------------------------------------------------------------------------
   # initialize draws
   A_draw <- A_OLS <- solve(crossprod(X))%*%crossprod(X,Y)
   Sig_OLS <- crossprod(Y-X%*%A_OLS)/Tnobs
@@ -184,16 +188,94 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
                            n.threads = 1, n.thin = 1L, printEvery = 1,
                            printCutoffs = 0L, rngKind = "default", rngNormalKind = "default",
                            updateState = FALSE)
+
+  if(sparse){
+
+    # s_y_mat <- matrix(NA, nrow = ncol(x.train), ncol = M)
+    p_y_vec <- rep(NA, M)
+    rho_y_vec <- rep(NA, M)
+    alpha_s_y_vec <- rep(NA, M)
+    alpha_scale_y_vec <- rep(NA, M)
+    # var_count_y_mat <- matrix(NA, nrow = ncol(x.train), ncol = M)
+
+    s_y_list <- list() # matrix(NA, nrow = ncol(x.train), ncol = M)
+    var_count_y_list <- list() # matrix(NA, nrow = ncol(x.train), ncol = M)
+
+    for (jj in 1:M){
+
+      p_y <- ncol(X)
+
+      s_y <- rep(1 / p_y, p_y) # probability vector to be used during the growing process for DART feature weighting
+      rho_y <- p_y # For DART
+
+      if(alpha_split_prior){
+        alpha_s_y <- p_y
+      }else{
+        alpha_s_y <- 1
+      }
+      alpha_scale_y <- p_y
+
+      var_count_y <- rep(0, p_y)
+
+
+      # s_y_mat[, jj] <- s_y
+      p_y_vec[jj] <- p_y
+      rho_y_vec[jj] <- rho_y
+      alpha_s_y_vec[jj] <- alpha_s_y
+      alpha_scale_y_vec[jj] <- alpha_scale_y
+      # var_count_y_mat[,jj] <- var_count_y
+
+      s_y_list[[jj]] <- s_y
+      var_count_y_list[[jj]] <- var_count_y
+
+    }
+
+    alpha_s_y_store_arr <- matrix(NA, nrow = M, ncol =  nthin )
+    # var_count_y_store_arr <- array(NA, dim = c( p_y, M, irep ))
+    # s_prob_y_store_arr <- array(NA, dim = c( p_y, M, irep ))
+
+    var_count_y_store_list <- list()
+    s_prob_y_store_list <- list()
+
+  }
+
+
+
   sampler.list <- list()
   svdraw.list <- list()
   for (jj in seq_len(M)){
-    sampler.list[[jj]] <- dbarts(Y[,jj]~X, control = control,tree.prior = cgm(cgm.exp, cgm.level), node.prior = normal(sd.mu), n.samples = nsave, weights=rep(1,Tnobs), sigma=sqrt(Sig_OLS[jj,jj]), resid.prior = chisq(prior.sig[[1]], prior.sig[[2]]))
+    sampler.list[[jj]] <- dbarts(Y[,jj]~X, control = control,tree.prior = cgm(cgm.exp, cgm.level), node.prior = normal(sd.mu), n.samples = nsave, weights=rep(1,Tnobs),
+                                 sigma=sqrt(Sig_OLS[jj,jj])#, resid.prior = chisq(prior.sig[[1]], prior.sig[[2]])
+                                 )
+
+
+    if(sparse){
+      tempmodel <- sampler.list[[jj]]$model
+      # print("length(tempmodel@tree.prior@splitProbabilities) = ")
+      # print(length(tempmodel@tree.prior@splitProbabilities))
+      #
+      # print("ncol(sampler.list[[jj]]$data@x) = ")
+      # print(ncol(sampler.list[[jj]]$data@x))
+      #
+      # print("length(s_y_list[[mm]]) = ")
+      # print(length(s_y_list[[mm]]))
+      #
+      # print("(tempmodel@tree.prior@splitProbabilities) = ")
+      # print((tempmodel@tree.prior@splitProbabilities))
+      #
+      # print("(s_y_list[[mm]]) = ")
+      # print((s_y_list[[mm]]))
+
+
+      tempmodel@tree.prior@splitProbabilities <- s_y_list[[jj]]
+      sampler.list[[jj]]$setModel(newModel = tempmodel)
+    }
   }
   sampler.run <- list()
   sigma.mat <- matrix(NA, M, 1)
   count.mat <- matrix(0, M*p, M)
 
-  # -----------------------------------------------------------------------------
+  # Initialize HS prior on covariances -----------------------------------------------------------------------------
   # Initialize HS prior on covariances (if any)
   lambda.A0 <- 1
   nu.A0 <- 1
@@ -205,13 +287,16 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
   Y_store <- array(NA,dim=c(nthin,Tnobs,M)) # filtered data
   fcst_store <- array(NA,dim=c(nthin,fhorz,M))
 
-  # -----------------------------------------------------------------------------
+  # Start Gibbs Sampler -----------------------------------------------------------------------------
   # start Gibbs sampler
   # show progress
   if(!quiet){
     pb <- txtProgressBar(min = 0, max = ntot, style = 3)
     start  <- Sys.time()
   }
+
+
+  ##### begin loop over MCMC iterations ###########
 
   for(irep in 1:ntot){
     # 1) sample model coefficients (either linear VAR or BART)
@@ -228,14 +313,79 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
           A0_mm <- A0_draw[mm,1:(mm-1)]
           sampler.list[[mm]]$setResponse(Y[,mm] - Z_mm%*%A0_mm)
         }
+
+        if(sparse){
+          tempmodel <- sampler.list[[mm]]$model
+
+          if(length(tempmodel@tree.prior@splitProbabilities)!= length(s_y_list[[mm]])){
+            print("length(tempmodel@tree.prior@splitProbabilities) = ")
+            print(length(tempmodel@tree.prior@splitProbabilities))
+
+            print("length(s_y_list[[mm]]) = ")
+            print(length(s_y_list[[mm]]))
+            stop("error length of split sprobs")
+          }
+          tempmodel@tree.prior@splitProbabilities <- s_y_list[[mm]]
+          sampler.list[[mm]]$setModel(newModel = tempmodel)
+        }
         rep_mm <- sampler.list[[mm]]$run(0L, 1L) # construct BART sample using dbarts (V. Dorie)
 
         sampler.run[[mm]] <- rep_mm
         sigma.mat[mm,] <- rep_mm$sigma
-        if (any(is.na(rep_mm$train))) break
+        if (any(is.na(rep_mm$train))){
+
+          print("(tempmodel@tree.prior@splitProbabilities) = ")
+          print((tempmodel@tree.prior@splitProbabilities))
+
+          print("(s_y_list[[mm]]) = ")
+          print((s_y_list[[mm]]))
+
+          print("Y[,mm] - Z_mm%*%A0_mm = ")
+          print(Y[,mm] - Z_mm%*%A0_mm)
+
+          print("var_count_y_list[[mm]] = ")
+          print(var_count_y_list[[mm]])
+
+          print(" count.mat[,mm] = ")
+          print( count.mat[,mm])
+
+          print("rep_mm$varcount = ")
+          print(rep_mm$varcount)
+
+
+          stop("NA value in tree prediction sample")
+        }
+        if (any(is.na(rep_mm$sigma))){
+          stop("NA value in sigma sample")
+        }
         eta[,mm] <- Y[,mm] - rep_mm$train
         A_draw[,mm] <- X.ginv%*%rep_mm$train
         count.mat[,mm] <- rep_mm$varcount
+
+
+        if(sparse){
+          tempcounts <- fcount(sampler.list[[mm]]$getTrees()$var)
+          tempcounts <- tempcounts[tempcounts$x != -1, ]
+          var_count_y <- rep(0, p_y_vec[mm])
+          var_count_y[tempcounts$x] <- tempcounts$N
+          # var_count_y_mat[,mm] <- var_count_y
+
+          var_count_y_list[[mm]] <- var_count_y
+        }
+
+        if (sparse & (irep > floor(nburn * 0.5))) {
+          # s_update_z <- update_s(var_count_z, p_z, alpha_s_z)
+          # s_z <- s_update_z[[1]]
+
+          s_update_y <- update_s(var_count_y_list[[mm]], p_y_vec[mm], alpha_s_y_vec[mm])
+          s_y_list[[mm]] <- s_update_y[[1]]
+
+          if(alpha_split_prior){
+            # alpha_s_z <- update_alpha(s_z, alpha_scale_z, alpha_a_z, alpha_b_z, p_z, s_update_z[[2]])
+            alpha_s_y_vec[mm] <- update_alpha(s_y_list[[mm]], alpha_scale_y_vec[mm], alpha_a_y, alpha_b_y, p_y_vec[mm], s_update_y[[2]])
+          }
+        }
+
         if (mm > 1){
           norm_mm <- as.numeric(exp(-.5*sv_latent[[mm]]) * 1/sigma.mat[mm,])
           u_mm <- eta[,1:(mm-1),drop=F]*norm_mm
@@ -269,6 +419,30 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
       for(tt in seq_len(Tnobs)){
         S_tmp <- exp(H[tt,])
         S.t <- t(A0_draw)%*%crossprod(diag(S_tmp),(A0_draw))
+
+        # if(class(try(solve(S.t),silent=T))!="matrix"){
+        #
+        #   print("(tempmodel@tree.prior@splitProbabilities) = ")
+        #   print((tempmodel@tree.prior@splitProbabilities))
+        #
+        #   print("(s_y_list[[mm]]) = ")
+        #   print((s_y_list[[mm]]))
+        #
+        #   print("Y[,mm] - Z_mm%*%A0_mm = ")
+        #   print(Y[,mm] - Z_mm%*%A0_mm)
+        #
+        #   print("var_count_y_list[[mm]] = ")
+        #   print(var_count_y_list[[mm]])
+        #
+        #   print(" count.mat[,mm] = ")
+        #   print( count.mat[,mm])
+        #
+        #   print("rep_mm$varcount = ")
+        #   print(rep_mm$varcount)
+        #
+        #   stop("S.t not invertible")
+        # }
+
         Sig_t[tt,,] <- S.t
       }
 
@@ -335,6 +509,13 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
         }
       }else{
         Y_store[in.thin,,] <- (beta2*t(matrix(Ysd,M,Tnobs)))+t(matrix(Ymu,M,Tnobs))
+      }
+
+      if(sparse){
+        alpha_s_y_store_arr[,in.thin] <- alpha_s_y_vec
+
+        var_count_y_store_list[[in.thin]] <- var_count_y_list
+        s_prob_y_store_list[[in.thin]] <- s_y_list
       }
     }
 

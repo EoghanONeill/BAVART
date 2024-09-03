@@ -18,11 +18,14 @@ mfbavart(
   cgm.exp = 2,
   sd.mu = 2,
   num.trees = 250,
-  prior.sig,
   nburn = 1000,
   nsave = 1000,
   thinfac = 1,
-  quiet = FALSE
+  quiet = FALSE,
+  sparse = FALSE,
+  alpha_a_y = 0.5,
+  alpha_b_y = 1,
+  alpha_split_prior = TRUE
 )
 }
 \arguments{
