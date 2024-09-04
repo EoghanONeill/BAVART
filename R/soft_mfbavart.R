@@ -285,15 +285,15 @@ soft_mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,v
           A0_mm <- A0_draw[mm,1:(mm-1)]
           # sampler.list[[mm]]$setResponse(Y[,mm] - Z_mm%*%A0_mm)
 
-          if(irep ==1){
-            # sampler.list[[mm]]$setResponse(y = ymat[,mm] )
-            tempy <- Y[,mm] #- (ymat[,-mm]-preds.train[,-mm])%*%(solve(Sigma_mat[-mm,-mm]) %*% Sigma_mat[-mm,mm]  )
-          }else{
+          # if(irep ==1){
+          #   # sampler.list[[mm]]$setResponse(y = ymat[,mm] )
+          #   tempy <- Y[,mm] #- (ymat[,-mm]-preds.train[,-mm])%*%(solve(Sigma_mat[-mm,-mm]) %*% Sigma_mat[-mm,mm]  )
+          # }else{
             tempy <- Y[,mm] - Z_mm%*%A0_mm
 
             # sampler.list[[mm]]$setResponse(y = ymat[,mm] - (ymat[,-mm]-preds.train[,-mm])%*%(solve(Sigma_mat[-mm,-mm]) %*% Sigma_mat[-mm,mm]  ) )
             # sampler.list[[jj]]$set_sigma(sqrt(Sigma_mat[mm,mm] - Sigma_mat[mm,-mm]%*%(solve(Sigma_mat[-mm,-mm]) %*% Sigma_mat[-mm,mm] ))  )
-          }
+          # }
         }else{
           tempy <- Y[,mm] #- (ymat[,-mm]-preds.train[,-mm])%*%(solve(Sigma_mat[-mm,-mm]) %*% Sigma_mat[-mm,mm]  )
         }
