@@ -2,7 +2,7 @@
 % Please edit documentation in R/soft_mfbavart.R
 \name{soft_mfbavart}
 \alias{soft_mfbavart}
-\title{Mixed Frequency Bayesian Additive Vector Autoregression Trees (Huber et al. 2023)}
+\title{Mixed Frequency Soft Bayesian Additive Vector Autoregression Trees (Huber et al. 2023)}
 \usage{
 soft_mfbavart(
   data,
@@ -56,7 +56,7 @@ The following objects are returned:
 \item{Yq}{Array of out-of-sample quarterly aggregates. First dimension is number of MCMC iterations, second dimension is number of horecast horizons, third dimension is number of variables.}
 }
 \description{
-Mixed Frequency Bayesian Additive Vector Autoregression Trees (Huber et al. 2023).
+Mixed Frequency Soft Bayesian Additive Vector Autoregression Trees (Huber et al. 2023).
 }
 \examples{
 # -----------------------------------------------------------------------------

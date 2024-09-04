@@ -25,4 +25,7 @@ Imports:
     stochvol,
     mfbvar,
     abind,
-    SoftBart
+    SoftBart,
+    GIGrvg,
+    quantreg,
+    statmod

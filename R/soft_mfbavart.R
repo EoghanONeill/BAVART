@@ -1,15 +1,9 @@
-# "Nowcasting in a Pandemic using Non-Parametric Mixed Frequency VARs"
-# Huber, F., Koop, G., Onorante, L., Pfarrhofer, M., and J. Schreiner,
-# Journal of Econometrics (forthcoming)
-#
-# This file creates a function mfbavart(...) to estimate the MF-BAVART model.
-# In addition to the baseline model in the paper, the code also includes an option
-# to introduce stochastic volatility in the error terms.
 
 
-#' @title Mixed Frequency Bayesian Additive Vector Autoregression Trees (Huber et al. 2023)
+
+#' @title Mixed Frequency Soft Bayesian Additive Vector Autoregression Trees (Huber et al. 2023)
 #'
-#' @description Mixed Frequency Bayesian Additive Vector Autoregression Trees (Huber et al. 2023).
+#' @description Mixed Frequency Soft Bayesian Additive Vector Autoregression Trees (Huber et al. 2023).
 #' @import dbarts
 #' @import MASS
 #' @import stochvol
