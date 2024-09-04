@@ -573,10 +573,12 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
     }
   }
   Yq_store <- Yq_store[,(p+1):(Tnobs+fhorz),]
-  return_obj <- list("Y"=Y_store,"fcst"=fcst_store,"Yq"=Yq_store,
-                     "alpha_s_y_store_arr" = alpha_s_y_store_arr,
-                     "var_count_y_store_list" = var_count_y_store_list,
-                     "s_prob_y_store_list" = s_prob_y_store_list)
+  return_obj <- list("Y"=Y_store,"fcst"=fcst_store,"Yq"=Yq_store)
 
+  if(sparse){
+    return_obj$alpha_s_y_store_arr <- alpha_s_y_store_arr
+    return_obj$var_count_y_store_list <- var_count_y_store_list
+    return_obj$s_prob_y_store_list <- s_prob_y_store_list
+  }
   return(return_obj)
 }
