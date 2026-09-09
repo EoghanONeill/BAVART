@@ -315,6 +315,10 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
         prior.sig = c(10000^50, 0.5)
         sigma.init <- 1
 
+        # Y_reference_mat <- Y
+        # Y_initial_mat <- Y
+        # computational_offset_mat <- matrix(0, nrow = nrow(Y), ncol(ncol(Y)))
+
         sampler.list[[jj]] <- dbarts(Y[,ii]~X[,sl.X[ii,]],
                                      control = control,
                                      tree.prior = cgm(cgm.exp, cgm.level),
@@ -502,9 +506,12 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             var.qt <- var.i
 
             # We need to re-define the response and the scaling parameter for BART to work
-            list.tree.eq[[i]][[q]]$setResponse(ytildeq)
-            list.tree.eq[[i]][[q]]$setWeights(1/var.qt)
+            # list.tree.eq[[i]][[q]]$setResponse(ytildeq)
 
+            # computational_offset_mat[,i] <- (X.i%*%beta.mat[, q,i]) + theta[q]*v.i + (Y[,i] - (X.i%*%beta.mat[, q,i]) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])
+            # list.tree.eq[[i]][[q]]$setOffset( offset = computational_offset_mat[,i], updateScale = FALSE)
+            list.tree.eq[[i]][[q]]$setOffset( offset = (X.i%*%beta.mat[, q,i]) + theta[q]*v.i + (f%*%t(Lambda.i))[,q], updateScale = FALSE)
+            list.tree.eq[[i]][[q]]$setWeights(1/var.qt)
 
             if(sparse){
               tempmodel <- list.tree.eq[[i]][[q]]$model
@@ -526,6 +533,7 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
 
 
             rep_mm <- list.tree.eq[[i]][[q]]$run(0L, 1L)
+            temppreds <- as.numeric( list.tree.eq[[i]][[q]]$predict(X[,sl.X[i,]])[,1L])
             list.sampler.run[[i]][[q]] <- rep_mm
 
             count.mat[,q,i] <- t(rep_mm$varcount)/num.trees
@@ -558,7 +566,8 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             }
 
             # Now, conditional on the tree sample the regression coefficients
-            yhatq <- (Y[,i] - rep_mm$train - theta[q]*v.i  - (f%*%t(Lambda.i))[,q])/(sqrt(var.i))
+            # yhatq <- (Y[,i] - rep_mm$train - theta[q]*v.i  - (f%*%t(Lambda.i))[,q])/(sqrt(var.i))
+            yhatq <- (Y[,i] - temppreds - theta[q]*v.i  - (f%*%t(Lambda.i))[,q])/(sqrt(var.i))
             Xhatq <- X.i/(sqrt(var.i))
 
             if (K > 1) V.prior.inv <- diag(1/V.prior.mat[,q,i]) else V.prior.inv <- 1/V.prior.mat[,q,i]
@@ -568,7 +577,8 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             beta.mat[,q,i] <- m.draw
 
             # Draw the parameters used for the Gauss approximation part
-            d.q.2 <- as.numeric(sqrt(theta[q]^2 + 2*tau2[q]) / abs(Y[,i] - rep_mm$train - (X.i%*%m.draw) - (f%*%t(Lambda.i))[,q]))
+            # d.q.2 <- as.numeric(sqrt(theta[q]^2 + 2*tau2[q]) / abs(Y[,i] - rep_mm$train - (X.i%*%m.draw) - (f%*%t(Lambda.i))[,q]))
+            d.q.2 <- as.numeric(sqrt(theta[q]^2 + 2*tau2[q]) / abs(Y[,i] - temppreds - (X.i%*%m.draw) - (f%*%t(Lambda.i))[,q]))
             g.q.2 <- (theta[q]^2 + 2*tau2[q]) / (sigma[q,i] * tau2[q])
             v.i <- 1/rinvgauss(Tnum,mean=d.q.2,dispersion=1/g.q.2)
             v[,q,i] <- v.i
@@ -576,19 +586,22 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             # Draw sigma
             if(ald.scale){
               n.tilda <- (n0 + 3*Tnum)/2
-              s.tilda <- (s0 + 2*sum(v.i) + sum((Y[,i] - rep_mm$train - (X.i%*%m.draw) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])^2/(tau2[q] * v.i)))/2
+              # s.tilda <- (s0 + 2*sum(v.i) + sum((Y[,i] - rep_mm$train - (X.i%*%m.draw) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])^2/(tau2[q] * v.i)))/2
+              s.tilda <- (s0 + 2*sum(v.i) + sum((Y[,i] - temppreds - (X.i%*%m.draw) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])^2/(tau2[q] * v.i)))/2
               sigma[q,i] <- 1/rgamma(1, n.tilda, s.tilda)
             }else{
               sigma[q,i] <- 1
             }
 
-            y.quantiles[ ,q,i] <- rep_mm$train + (X.i%*%m.draw) + (f%*%t(Lambda.i))[,q]
-            y.quantiles_parts[,q,i,1] <- rep_mm$train
+            # y.quantiles[ ,q,i] <- rep_mm$train + (X.i%*%m.draw) + (f%*%t(Lambda.i))[,q]
+            y.quantiles[ ,q,i] <- temppreds + (X.i%*%m.draw) + (f%*%t(Lambda.i))[,q]
+            y.quantiles_parts[,q,i,1] <- temppreds # rep_mm$train
             y.quantiles_parts[,q,i,2] <- (X.i%*%m.draw)
 
             if (R > 0){
               # Construct shocks for estimating the latent factor
-              eta[, q,i] <- Y[,i] - rep_mm$train - (X.i%*%m.draw)  - v.i*theta[q]
+              # eta[, q,i] <- Y[,i] - rep_mm$train - (X.i%*%m.draw)  - v.i*theta[q]
+              eta[, q,i] <- Y[,i] - temppreds - (X.i%*%m.draw)  - v.i*theta[q]
             }
           }else{
             if (omega[q,i]==1){
@@ -596,7 +609,14 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
               var.qt <- var.i/omega[q,i]^2
 
               # We need to re-define the response and the scaling parameter for BART to work
-              list.tree.eq[[i]][[q]]$setResponse(ytildeq)
+              # list.tree.eq[[i]][[q]]$setResponse(ytildeq)
+
+              # computational_offset_mat[,i] <- (X.i%*%beta.mat[, q,i]) + theta[q]*v.i + (Y[,i] - (X.i%*%beta.mat[, q,i]) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])
+              # list.tree.eq[[i]][[q]]$setOffset( offset = computational_offset_mat[,i], updateScale = FALSE)
+              list.tree.eq[[i]][[q]]$setOffset( offset = Y[,i] - (Y[,i] - (X.i%*%beta.mat[, q,i]) * (1-omega[q,i]) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])/omega[q,i],
+                                                updateScale = FALSE)
+
+
               list.tree.eq[[i]][[q]]$setWeights(1/var.qt)
 
               if(sparse){
@@ -607,6 +627,8 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
               }
 
               rep_mm <- list.tree.eq[[i]][[q]]$run(0L, 1L)
+              temppreds <- as.numeric( list.tree.eq[[i]][[q]]$predict(X[,sl.X[i,]])[,1L])
+
               list.sampler.run[[i]][[q]] <- rep_mm
 
               count.mat[,q,i] <- t(rep_mm$varcount)/num.trees
@@ -646,11 +668,13 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
 
               rep_mm <- list()
               rep_mm$train <- rep(0, Tnum)
+              temppreds <-rep(0, Tnum)
             }
 
             if(omega[q,i]==0){
               # Now, conditional on the tree sample the regression coefficients
-              yhatq <- (Y[,i] - rep_mm$train * omega[q,i] - theta[q]*v.i  - (f%*%t(Lambda.i))[,q])/(sqrt(var.i))
+              yhatq <- (Y[,i] - temppreds* # rep_mm$train *
+                          omega[q,i] - theta[q]*v.i  - (f%*%t(Lambda.i))[,q])/(sqrt(var.i))
               Xhatq <- X.i * (1-omega[q,i])/(sqrt(var.i))
 
               if (K > 1) V.prior.inv <- diag(1/V.prior.mat[,q,i]) else V.prior.inv <- 1/V.prior.mat[,q,i]
@@ -661,7 +685,8 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             }
 
             # Draw the parameters used for the Gauss approximation part
-            d.q.2 <- as.numeric(sqrt(theta[q]^2 + 2*tau2[q]) / abs(Y[,i] - rep_mm$train*omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i]) - (f%*%t(Lambda.i))[,q]))
+            d.q.2 <- as.numeric(sqrt(theta[q]^2 + 2*tau2[q]) / abs(Y[,i] - temppreds* # rep_mm$train*
+                                                                     omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i]) - (f%*%t(Lambda.i))[,q]))
             g.q.2 <- (theta[q]^2 + 2*tau2[q]) / (sigma[q,i] * tau2[q])
             v.i <- 1/rinvgauss(Tnum,mean=d.q.2,dispersion=1/g.q.2)
             v[,q,i] <- v.i
@@ -669,19 +694,22 @@ qfbart <- function(Y,X,sl.X,X.out,train.start,
             # Draw sigma
             if(ald.scale){
               n.tilda <- (n0 + 3*Tnum)/2
-              s.tilda <- (s0 + 2*sum(v.i) + sum((Y[,i] - rep_mm$train*omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i]) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])^2/(tau2[q] * v.i)))/2
+              s.tilda <- (s0 + 2*sum(v.i) + sum((Y[,i] - temppreds* # rep_mm$train*
+                                                   omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i]) - theta[q]*v.i - (f%*%t(Lambda.i))[,q])^2/(tau2[q] * v.i)))/2
               sigma[q,i] <- 1/rgamma(1, n.tilda, s.tilda)
             }else{
               sigma[q,i] <- 1
             }
 
-            y.quantiles[ ,q,i] <- rep_mm$train*omega[q,i] + (X.i%*%m.draw)*(1-omega[q,i]) + (f%*%t(Lambda.i))[,q]
-            y.quantiles_parts[,q,i,1] <- rep_mm$train
+            y.quantiles[ ,q,i] <- temppreds* # rep_mm$train*
+              omega[q,i] + (X.i%*%m.draw)*(1-omega[q,i]) + (f%*%t(Lambda.i))[,q]
+            y.quantiles_parts[,q,i,1] <- temppreds # rep_mm$train
             y.quantiles_parts[,q,i,2] <- (X.i%*%m.draw)
 
             if (R > 0){
               # Construct shocks for estimating the latent factor
-              eta[, q,i] <- Y[,i] - rep_mm$train*omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i])  - v.i*theta[q]
+              eta[, q,i] <- Y[,i] - temppreds* # rep_mm$train*
+                omega[q,i] - (X.i%*%m.draw)*(1-omega[q,i])  - v.i*theta[q]
             }
           }
         }

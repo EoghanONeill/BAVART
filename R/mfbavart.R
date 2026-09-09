@@ -239,7 +239,9 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
 
   }
 
-
+  # Y_reference_mat <- Y
+  # Y_initial_mat <- Y
+  # computational_offset_mat <- matrix(0, nrow = nrow(Y), ncol(ncol(Y)))
 
   sampler.list <- list()
   svdraw.list <- list()
@@ -311,7 +313,11 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
         if (mm > 1){
           Z_mm <- eta[,1:(mm-1), drop=F]
           A0_mm <- A0_draw[mm,1:(mm-1)]
-          sampler.list[[mm]]$setResponse(Y[,mm] - Z_mm%*%A0_mm)
+          # sampler.list[[mm]]$setResponse(Y[,mm] - Z_mm%*%A0_mm)
+
+          # computational_offset_mat[,mm] <- Z_mm%*%A0_mm #  Y_reference_mat[,mm] - (Y[,mm] - Z_mm%*%A0_mm)
+          # sampler.list[[mm]]$setOffset( offset = computational_offset_mat[,mm], updateScale = FALSE)
+          sampler.list[[mm]]$setOffset( offset = Z_mm%*%A0_mm, updateScale = FALSE)
         }
 
         if(sparse){
@@ -332,7 +338,9 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
 
         sampler.run[[mm]] <- rep_mm
         sigma.mat[mm,] <- rep_mm$sigma
-        if (any(is.na(rep_mm$train))){
+
+        temppreds <- as.numeric(sampler.list[[mm]]$predict(X)[,1L])
+        if (any(is.na(temppreds))){
 
           print("(tempmodel@tree.prior@splitProbabilities) = ")
           print((tempmodel@tree.prior@splitProbabilities))
@@ -358,8 +366,8 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
         if (any(is.na(rep_mm$sigma))){
           stop("NA value in sigma sample")
         }
-        eta[,mm] <- Y[,mm] - rep_mm$train
-        A_draw[,mm] <- X.ginv%*%rep_mm$train
+        eta[,mm] <- Y[,mm] - temppreds # rep_mm$train
+        A_draw[,mm] <- X.ginv%*% temppreds # rep_mm$train
         count.mat[,mm] <- rep_mm$varcount
 
 
@@ -418,7 +426,8 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
 
       for(tt in seq_len(Tnobs)){
         S_tmp <- exp(H[tt,])
-        S.t <- t(A0_draw)%*%crossprod(diag(S_tmp),(A0_draw))
+        # S.t <- t(A0_draw)%*%crossprod(diag(S_tmp),(A0_draw))
+        S.t <- crossprod(A0_draw,crossprod(diag(S_tmp),(A0_draw)))
 
         # if(class(try(solve(S.t),silent=T))!="matrix"){
         #
@@ -502,7 +511,8 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
         for(mm in seq_len(M)){
           if(mm>M_h){
             rep_mm <- sampler.run[[mm]]
-            Y_store[in.thin,,mm] <- (rep_mm$train + rep_mm$sigma*rnorm(Tnobs))*Ysd[mm] + Ymu[mm]
+            Y_store[in.thin,,mm] <- (temppreds # rep_mm$train
+                                     + rep_mm$sigma*rnorm(Tnobs))*Ysd[mm] + Ymu[mm]
           }else{
             Y_store[in.thin,,mm] <- (beta2[,mm]*Ysd[mm]) + Ymu[mm]
           }
@@ -528,10 +538,11 @@ mfbavart <- function(data,itr,p=5,fhorz=0,cons=FALSE,exact=FALSE,sv=FALSE,var.th
       }
 
       Sig_T <- Sig_t[Tnobs,,] # use final observation for Sigma
+      cholST <- chol(Sig_T)
       tree.pred <- matrix(0, M)
       for (hh in seq_len(fhorz)){
         for (j in seq_len(M)) tree.pred[j] <- sampler.list[[j]]$predict(X.hat)
-        Y.tp1 <- as.numeric(tree.pred) + t(chol(Sig_T))%*%rnorm(M)
+        Y.tp1 <- as.numeric(tree.pred) + crossprod(cholST, rnorm(M))
 
         if (cons){
           X.hat <- c(Y.tp1, X.hat[1:(M*(p-1))],1)
